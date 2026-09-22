@@ -1,0 +1,19 @@
+build/
+obj_dir/
+code
+*.o
+*.a
+*.elf
+*.vcd
+*.fst
+# Ignore root crash dumps without hiding RTL or source directories named core.
+/core
+!/core/
+/core.[0-9]*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# Downloaded course hardware tools.
+*.AppImage
