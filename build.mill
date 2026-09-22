@@ -1,0 +1,16 @@
+//| mill-jvm-version: system
+package build
+
+import mill._
+import mill.scalalib._
+
+object chisel extends ScalaModule {
+  def scalaVersion = "2.13.18"
+  def chiselVersion = "7.7.0" // Includes the resolver for firtool 1.139.0.
+
+  def mvnDeps = Seq(mvn"org.chipsalliance::chisel:$chiselVersion")
+  def scalacPluginMvnDeps = Seq(mvn"org.chipsalliance:::chisel-plugin:$chiselVersion")
+  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-language:reflectiveCalls")
+  def mainClass = Some("cpu2026.Generate")
+  def forkArgs = Seq(s"-Dchisel.project.root=${mill.api.BuildCtx.workspaceRoot}")
+}

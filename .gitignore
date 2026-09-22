@@ -17,3 +17,10 @@ __pycache__/
 
 # Downloaded course hardware tools.
 *.AppImage
+
+# Mill / Scala build and editor caches. Generated submission RTL is tracked.
+/out/
+/.bsp/
+/.bloop/
+/.metals/
+/verilog/.chisel-*/

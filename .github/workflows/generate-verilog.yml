@@ -1,0 +1,81 @@
+name: Generate Verilog
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generate-verilog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build the revision selected when the workflow was dispatched.
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21.0.10+7'
+
+      - name: Cache Scala and compiler dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/llvm-firtool
+          key: chisel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mill-version', 'build.mill') }}
+
+      - name: Install pinned Mill release
+        run: |
+          mill_version=$(cat .mill-version)
+          mill_dir="$RUNNER_TEMP/mill-bin"
+          mkdir -p "$mill_dir"
+          # Native Linux x86-64 release for the ubuntu-24.04 runner.
+          curl --fail --location --retry 3 \
+            "https://repo.maven.apache.org/maven2/com/lihaoyi/mill-dist-native-linux-amd64/$mill_version/mill-dist-native-linux-amd64-$mill_version.exe" \
+            --output "$mill_dir/mill"
+          chmod +x "$mill_dir/mill"
+          echo "$mill_dir" >> "$GITHUB_PATH"
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Generate and set up RTL
+        run: mill --no-server chisel.run
+
+      - name: Build the course simulator
+        run: make build CONFIG=/dev/null APPIMAGE= VERILATOR=verilator
+
+      - name: Commit generated RTL
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          # A source push during generation requires a rerun, never a force push.
+          remote_sha=$(git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" | cut -f1)
+          if [ "$remote_sha" != "$SOURCE_SHA" ]; then
+            echo "::error::The branch changed during generation. Run this workflow again."
+            exit 1
+          fi
+          git add -- verilog/generated/student_top.sv verilog/filelist.f
+          if git diff --cached --quiet; then
+            echo "Generated RTL is already up to date."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Generate Verilog from Chisel ($SOURCE_SHA)"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
