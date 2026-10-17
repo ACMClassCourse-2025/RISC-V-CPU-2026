@@ -33,7 +33,13 @@ if [ -z "${VERILATOR:-}" ]; then
 fi
 
 out="$here/build"
+marker="$out/.bpu_bits"
+want="$btb/$bht"
+if [ ! -f "$marker" ] || [ "$(cat "$marker" 2>/dev/null || true)" != "$want" ]; then
+    rm -rf "$out"
+fi
 mkdir -p "$out"
+printf '%s\n' "$want" > "$marker"
 
 "$VERILATOR" --cc --exe --build --assert -Wall -Wno-fatal \
     --top-module bpu -Mdir "$out" \

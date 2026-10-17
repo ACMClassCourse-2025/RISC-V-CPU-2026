@@ -221,6 +221,7 @@ module frontend_subsystem #(
   assign ren_fire  = ren_valid & {W{ren_ready}};
   assign backend_ready = be_ready;
   assign rob_ready = rob_in_ready;
+  assign cm_valid = commit_valid;
 
   // stub dispatch 字段提取（rename 输出没有 rob_idx，单独从 ROB 取）
   logic [W*PW-1:0] disp_tag;

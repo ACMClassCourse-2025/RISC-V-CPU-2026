@@ -34,7 +34,13 @@ if [ -z "${VERILATOR:-}" ]; then
 fi
 
 out="$here/build"
+want="$w/$prf/$cdb/$rob/$lsq"
+marker="$out/.if_params"
+if [ ! -f "$marker" ] || [ "$(cat "$marker" 2>/dev/null || true)" != "$want" ]; then
+    rm -rf "$out"
+fi
 mkdir -p "$out"
+printf '%s\n' "$want" > "$marker"
 
 "$VERILATOR" --cc --exe --build --assert -Wall -Wno-fatal \
     --top-module if_defs_check -Mdir "$out" \

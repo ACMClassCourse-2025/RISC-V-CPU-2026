@@ -30,7 +30,12 @@ if [ -z "${VERILATOR:-}" ]; then
 fi
 
 out="$here/build"
+marker="$out/.index_bits"
+if [ ! -f "$marker" ] || [ "$(cat "$marker" 2>/dev/null || true)" != "$index_bits" ]; then
+    rm -rf "$out"
+fi
 mkdir -p "$out"
+printf '%s\n' "$index_bits" > "$marker"
 
 "$VERILATOR" --cc --exe --build --assert -Wall -Wno-fatal \
     --top-module icache_pipe -Mdir "$out" \

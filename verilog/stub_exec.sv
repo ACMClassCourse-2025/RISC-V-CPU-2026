@@ -141,7 +141,6 @@ module stub_exec #(
 
   // ---- 时序 ----------------------------------------------------------------
   integer i_ff, i_ff2, slot;
-  logic [7:0] slot_count;
 
   always_ff @(posedge clk) begin
     if (reset) begin
