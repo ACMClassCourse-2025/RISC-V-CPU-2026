@@ -592,6 +592,57 @@ bool run_directed(Harness& h) {
     }
     h.step(Inputs{}, "after-mispredict");
 
+    // 6. 重复完成：cdb 与 complete 同拍报同一 tag，不应重复提交
+    for (int i = 0; i < 20 && !h.ref.q.empty(); ++i) h.step(Inputs{}, "drain-dup");
+    in = Inputs{};
+    in.u[0] = make_uop(0x500, 7, 0, false);
+    h.step(in, "alloc-dup");
+    in = Inputs{};
+    in.cdb_valid = true;
+    in.cdb_tag = 7;
+    in.comp_valid[0] = true;
+    in.comp_tag[0] = 7;
+    h.step(in, "duplicate-complete");
+    in = Inputs{};
+    h.step(in, "commit-dup");
+    if (!h.last_comb.commit_valid[0]) {
+        h.report("directed", "dup commit missing", 0, 0, 1);
+        ok = false;
+    }
+    h.step(Inputs{}, "pop-dup");
+
+    // 7. squash 后迟到的 cdb/br_update：年轻 tag 已不在 ROB，应忽略
+    in = Inputs{};
+    in.u[0] = make_uop(0x600, 8, 0, false, 0, false, false, 0, true,
+                       false, false, false, false, 0);
+    in.u[1] = make_uop(0x604, 9, 0, false);
+    h.step(in, "alloc-late");
+    in = Inputs{};
+    in.comp_valid[0] = true;
+    in.comp_tag[0] = 8;
+    in.comp_valid[1] = true;
+    in.comp_tag[1] = 9;
+    h.step(in, "complete-late");
+    in = Inputs{};
+    in.br_valid = true;
+    in.br_tag = 8;
+    in.br_taken = true;
+    in.br_target = 0x700;
+    h.step(in, "mispredict-late");
+    h.step(Inputs{}, "late-pulse");
+    in = Inputs{};
+    in.cdb_valid = true;
+    in.cdb_tag = 9;
+    in.br_valid = true;
+    in.br_tag = 9;
+    in.br_taken = true;
+    in.br_target = 0x700;
+    h.step(in, "late-events");
+    if (h.last_reg.redirect_valid) {
+        h.report("directed", "late tag caused redirect", 0, 1, 0);
+        ok = false;
+    }
+
     return ok;
 }
 
