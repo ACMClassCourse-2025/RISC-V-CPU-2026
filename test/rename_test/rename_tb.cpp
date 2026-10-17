@@ -267,7 +267,10 @@ struct Harness {
     Exp compute(const Inputs& in) const {
         Exp e;
         int nv = 0;
-        for (int l = 0; l < W; ++l) if (in.u[l].valid) ++nv;
+        for (int l = 0; l < W; ++l) {
+            if (in.u[l].valid) ++nv;
+            e.lane[l].valid = in.u[l].valid;
+        }
         e.in_ready = !in.recover && in.out_ready && (ref.count_free() >= nv);
         if (!e.in_ready) return e;
 
@@ -336,6 +339,7 @@ struct Harness {
                 continue;
             }
             if (!want_valid) continue;
+            if (!e.in_ready) continue;
             int base = l * RENAME_W;
             struct { const char* n; uint32_t got; uint32_t want; } fields[] = {
                 {"dest", get_bits(dut->out_uop, base + DEST_OFF, PW), e.lane[l].dest},

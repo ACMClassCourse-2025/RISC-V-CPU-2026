@@ -250,7 +250,7 @@ module rename #(
   always_comb begin
     out_valid = '0;
     for (i_out = 0; i_out < W; i_out = i_out + 1) begin
-      out_valid[i_out] = in_valid[i_out] && in_ready;
+      out_valid[i_out] = in_valid[i_out];   // valid 保持，ready 决定是否接收
       out_uop[i_out*`CPU_RENAME_W + `CPU_DISPATCH_VALID_OFF] = out_valid[i_out];
       out_uop[i_out*`CPU_RENAME_W + `CPU_DISPATCH_PC_OFF +: 32] = u_pc[i_out];
       out_uop[i_out*`CPU_RENAME_W + `CPU_DISPATCH_INST_OFF +: 32] = u_inst[i_out];

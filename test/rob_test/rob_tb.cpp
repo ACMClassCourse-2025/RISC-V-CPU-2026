@@ -174,7 +174,7 @@ struct RefRob {
         e.flush = e.br_pos >= 0 && e.br_mispredict;
 
         e.in_ready = !e.flush && !cur_recover && !cur_redirect &&
-                     (q.size() + (size_t)nv <= (size_t)DEPTH);
+                     (q.size() + (size_t)W <= (size_t)DEPTH);
 
         e.n_commit = 0;
         if (!e.flush) {

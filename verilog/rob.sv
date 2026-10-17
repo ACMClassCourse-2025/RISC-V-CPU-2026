@@ -27,6 +27,7 @@ module rob #(
   input  logic [W-1:0]                 in_pred_taken,
   input  logic [W*32-1:0]              in_pred_target,
   output logic                         in_ready,
+  output logic [W*`CPU_ROB_TAG_W-1:0]  alloc_rob_idx,
 
   // 完成口
   input  logic                         cdb_valid,
@@ -50,6 +51,8 @@ module rob #(
   output logic [W-1:0]                 commit_is_store,
   output logic [W-1:0]                 commit_is_load,
   output logic [W*`CPU_LSQ_IDX_W-1:0]  commit_lsq_id,
+  output logic [W*32-1:0]              commit_pc,
+  output logic [W*32-1:0]              commit_inst,
   output logic                         commit_halt,
 
   // 给 rename 的提交反馈
@@ -69,7 +72,8 @@ module rob #(
   output logic                         redirect_valid,
   output logic [31:0]                  redirect_pc,
   output logic                         squash_valid,
-  output logic [`CPU_ROB_TAG_W-1:0]    squash_rob_idx
+  output logic [`CPU_ROB_TAG_W-1:0]    squash_rob_idx,
+  output logic                         br_update_uncond
 );
 
   localparam integer PW       = `CPU_PRF_IDX_W;
@@ -91,6 +95,7 @@ module rob #(
   logic                  entry_is_load   [0:DEPTH-1];
   logic [LW-1:0]         entry_lsq_id    [0:DEPTH-1];
   logic                  entry_control   [0:DEPTH-1];
+  logic                  entry_uncond    [0:DEPTH-1];
   logic                  entry_pred_taken[0:DEPTH-1];
   logic [31:0]           entry_pred_tgt  [0:DEPTH-1];
   logic                  entry_done      [0:DEPTH-1];
@@ -111,6 +116,14 @@ module rob #(
     n_valid = '0;
     for (i_alloc = 0; i_alloc < W; i_alloc = i_alloc + 1)
       if (in_valid[i_alloc]) n_valid = n_valid + 1'b1;
+  end
+
+  integer i_ar;
+  always_comb begin
+    alloc_rob_idx = '0;
+    for (i_ar = 0; i_ar < W; i_ar = i_ar + 1)
+      if (in_valid[i_ar])
+        alloc_rob_idx[i_ar*RW +: RW] = (head + count + i_ar) & MASK;
   end
 
   // ---- 头部提交窗口 --------------------------------------------------------
@@ -162,6 +175,7 @@ module rob #(
 
   logic flush_young;
   assign flush_young = br_update_valid && br_found && br_mispredict;
+  assign br_update_uncond = br_update_valid && br_found && entry_uncond[br_idx];
 
   // ---- 提交选择 ------------------------------------------------------------
   logic [W-1:0] commit_valid_int;
@@ -187,6 +201,8 @@ module rob #(
     commit_is_store   = '0;
     commit_is_load    = '0;
     commit_lsq_id     = '0;
+    commit_pc         = '0;
+    commit_inst       = '0;
     commit_reg_we     = '0;
     commit_rd         = '0;
     commit_dest_tag   = '0;
@@ -200,6 +216,8 @@ module rob #(
         commit_is_store[i_commit]            = entry_is_store[i_commit_idx];
         commit_is_load[i_commit]             = entry_is_load[i_commit_idx];
         commit_lsq_id[i_commit*LW +: LW]     = entry_lsq_id[i_commit_idx];
+        commit_pc[i_commit*32 +: 32]         = entry_pc[i_commit_idx];
+        commit_inst[i_commit*32 +: 32]       = entry_inst[i_commit_idx];
         commit_reg_we[i_commit]              = entry_reg_we[i_commit_idx];
         commit_rd[i_commit*5 +: 5]           = entry_rd[i_commit_idx];
         commit_dest_tag[i_commit*PW +: PW]   = entry_dest_tag[i_commit_idx];
@@ -255,7 +273,7 @@ module rob #(
   end
 
   assign in_ready = !flush_young && !recover_valid && !redirect_valid &&
-                    ((count + n_valid) <= DEPTH);
+                    ((count + W) <= DEPTH);
 
   // ---- 完成搜索（组合） ----------------------------------------------------
   logic          cdb_hit;
@@ -378,6 +396,8 @@ module rob #(
               entry_lsq_id[i_alloc_idx]  <= in_uop[i_alloc2*`CPU_RENAME_W + `CPU_DISPATCH_LSQ_ID_OFF +: LW];
               entry_control[i_alloc_idx] <= in_uop[i_alloc2*`CPU_RENAME_W + `CPU_DISPATCH_IS_BRANCH_OFF] |
                                             in_uop[i_alloc2*`CPU_RENAME_W + `CPU_DISPATCH_IS_JAL_OFF] |
+                                            in_uop[i_alloc2*`CPU_RENAME_W + `CPU_DISPATCH_IS_JALR_OFF];
+              entry_uncond[i_alloc_idx]  <= in_uop[i_alloc2*`CPU_RENAME_W + `CPU_DISPATCH_IS_JAL_OFF] |
                                             in_uop[i_alloc2*`CPU_RENAME_W + `CPU_DISPATCH_IS_JALR_OFF];
               entry_pred_taken[i_alloc_idx] <= in_pred_taken[i_alloc2];
               entry_pred_tgt[i_alloc_idx]   <= in_pred_target[i_alloc2*32 +: 32];
