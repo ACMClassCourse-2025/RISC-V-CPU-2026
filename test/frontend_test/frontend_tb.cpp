@@ -17,7 +17,13 @@
 #include <cstring>
 #include <vector>
 
+#ifndef TB_W
+#define TB_W 1
+#endif
+
 namespace {
+
+constexpr int W = TB_W;
 
 uint32_t rng_state = 0x20261018u;
 
@@ -98,14 +104,12 @@ struct Harness {
         cycles = 0;
     }
 
-    // 返回本拍提交的 pc/inst；无提交时 pc=0xffffffff。
-    bool sample_commit(uint32_t* pc, uint32_t* inst) {
-        if ((uint32_t)dut->commit_valid & 1u) {
-            *pc = (uint32_t)dut->commit_pc;
-            *inst = (uint32_t)dut->commit_inst;
-            return true;
-        }
-        return false;
+    // 读取本拍 commit lane 的 pc/inst；valid lane 前缀有效。
+    bool sample_commit_lane(int lane, uint32_t* pc, uint32_t* inst) {
+        if ((((uint32_t)dut->commit_valid >> lane) & 1u) == 0) return false;
+        *pc = (uint32_t)(((uint64_t)dut->commit_pc >> (lane * 32)) & 0xffffffffu);
+        *inst = (uint32_t)(((uint64_t)dut->commit_inst >> (lane * 32)) & 0xffffffffu);
+        return true;
     }
 };
 
@@ -157,8 +161,9 @@ bool test_straight() {
 
     int got = 0;
     for (int cyc = 0; cyc < 500 && got < 8; ++cyc) {
-        uint32_t pc = 0, inst = 0;
-        if (h.sample_commit(&pc, &inst)) {
+        for (int lane = 0; lane < W; ++lane) {
+            uint32_t pc = 0, inst = 0;
+            if (!h.sample_commit_lane(lane, &pc, &inst)) continue;
             uint32_t want_pc = (uint32_t)got * 4u;
             uint32_t want_inst = mem_word(want_pc);
             if (pc != want_pc) h.report("commit pc", pc, want_pc);
@@ -197,7 +202,8 @@ bool test_branch() {
             redirect_pc = (uint32_t)dut.redirect_pc;
         }
         uint32_t pc = 0, inst = 0;
-        if (h.sample_commit(&pc, &inst)) {
+        for (int lane = 0; lane < W; ++lane) {
+            if (!h.sample_commit_lane(lane, &pc, &inst)) continue;
             if (pc == 0x10) saw_branch_commit = true;
             if (pc == 0x20 && inst == mem_word(0x20)) saw_target_commit = true;
         }

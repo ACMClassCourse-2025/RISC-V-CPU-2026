@@ -57,8 +57,8 @@ C++ TB 负责 `refill_valid/refill_addr` 的指令内存响应：收到请求后
 
 ## 4. 限制
 
-- `frontend_ooo` 当前每拍只取/输出 lane 0；W=2 时 lane 1 保持无效，
-  双宽取指留到 P2；
+- W=2 使用 2 个 decoded-uop slot 成组送给 rename/ROB，但 I-Cache 仍每拍只
+  取一条；真正的双宽取指（双 bank/多字行）留到后续 P2；
 - `stub_exec` 不实现真实执行语义，`force_taken/force_target` 由 TB 脚本控制；
 - `squash` 只做保守的 rob_idx 距离判断，真实后端由乙实现；
 - 该测试验证的是接口/控制流，不验证 RV32IM 数据通路正确性。

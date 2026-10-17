@@ -1,20 +1,18 @@
 // -----------------------------------------------------------------------------
-// frontend_ooo.sv — 取指 / 译码 / 分支预测前端（P1，W=1 取指）
+// frontend_ooo.sv — 取指 / 译码 / 分支预测前端
 //
 // 组成：
 //   pc_unit + icache_pipe + decoder + bpu
-//   + 1 项 decoded-uop 输出缓冲（吸收 rename 反压）
+//   + W 项 decoded-uop 输出缓冲（吸收 rename 反压）
 //
-// 数据流：
-//   pc_unit -> icache_pipe -> decoder -> decoded uop buffer -> rename
-//   bpu 在 fetch 响应 PC 上做组合预测，预测信息随 uop 一起送给 rename/ROB。
+// P1 W=1：每拍取一条、填满 1 个 slot 后送出。
+// P2 预研 W=2：I-Cache 仍每拍取一条，但用 2 个 slot 成组送给 rename/ROB，
+// 用于验证双 lane 重命名/提交；还没有实现双宽 I-Cache 取指。
 //
 // 控制：
 //   - backend_ready=0 时冻结取指与输出；
-//   - ROB 的 redirect_valid/redirect_pc 冲刷 I-Cache 并切 PC；
+//   - ROB 的 redirect_valid/redirect_pc 冲刷 I-Cache、清空 slot、切 PC；
 //   - br_update 每拍更新 BPU（upd_is_uncond 由 ROB 根据对应表项给出）。
-//
-// 当前只使用 lane 0 输出；W>1 时为 P2 双宽取指预留接口，lane 1..W-1 保持无效。
 // -----------------------------------------------------------------------------
 
 module frontend_ooo #(
@@ -23,14 +21,11 @@ module frontend_ooo #(
   input  logic        clk,
   input  logic        reset,
 
-  // 后端反压
   input  logic        backend_ready,
 
-  // 来自 ROB 的重定向
   input  logic        redirect_valid,
   input  logic [31:0] redirect_pc,
 
-  // 来自后端的通用寄存器重命名/预测更新信息
   input  logic        br_update_valid,
   input  logic [31:0] br_update_pc,
   input  logic        br_update_taken,
@@ -39,7 +34,6 @@ module frontend_ooo #(
   input  logic        br_update_uncond,
   input  logic [`CPU_PRF_IDX_W-1:0] br_update_tag,
 
-  // decoded uop 输出（送 rename）
   output logic [W-1:0]                 dec_valid,
   output logic [W*`CPU_DECODE_W-1:0]   dec_uop,
   output logic [W-1:0]                 dec_pred_taken,
@@ -48,7 +42,6 @@ module frontend_ooo #(
 
   output logic [31:0]                 pc_out,
 
-  // I-Cache 回填
   output logic        refill_valid,
   output logic [31:0] refill_addr,
   input  logic        refill_resp_valid,
@@ -74,11 +67,13 @@ module frontend_ooo #(
 
   assign pc_out = pc;
 
-  // ---- 输出缓冲 ----------------------------------------------------------
-  logic                        buf_valid;
-  logic [`CPU_DECODE_W-1:0]    buf_uop;
-  logic                        buf_pred_taken;
-  logic [31:0]                 buf_pred_target;
+  // ---- decoded-uop slot 缓冲 ---------------------------------------------
+  logic [W-1:0]                 slot_valid;
+  logic [`CPU_DECODE_W-1:0]     slot_uop   [0:W-1];
+  logic                         slot_pred_taken  [0:W-1];
+  logic [31:0]                  slot_pred_target [0:W-1];
+  logic [2:0]                   fill_ptr;
+  logic                         all_full;
 
   logic        fetch_valid;
   logic        resp_valid;
@@ -86,12 +81,10 @@ module frontend_ooo #(
   logic [31:0] resp_inst;
   logic        resp_ready;
 
-  // 缓冲空或本拍被 rename 消费时，可以接收新响应/继续取指。
-  logic buf_can_accept;
-  assign buf_can_accept = !buf_valid || rename_ready;
-
-  assign fetch_valid = backend_ready && !redirect_valid && buf_can_accept && !reset;
+  assign all_full = (fill_ptr == W);
+  assign fetch_valid = backend_ready && !redirect_valid && (fill_ptr < W) && !reset;
   assign pc_advance  = fetch_valid && fetch_ready;
+  assign resp_ready  = backend_ready && !redirect_valid && (fill_ptr < W);
 
   icache_pipe #(
     .INDEX_BITS (`CPU_ICACHE_INDEX_BITS)
@@ -111,8 +104,6 @@ module frontend_ooo #(
     .refill_resp_valid (refill_resp_valid),
     .refill_rdata      (refill_rdata)
   );
-
-  assign resp_ready = backend_ready && !redirect_valid && buf_can_accept;
 
   // ---- 译码 --------------------------------------------------------------
   logic [4:0]  dec_rs1, dec_rs2, dec_rd;
@@ -167,68 +158,98 @@ module frontend_ooo #(
   );
 
   // ---- 输出 --------------------------------------------------------------
+  integer i_out;
   always_comb begin
     dec_valid       = '0;
     dec_uop         = '0;
     dec_pred_taken  = '0;
     dec_pred_target = '0;
 
-    dec_valid[0] = buf_valid && !redirect_valid;
-
-    dec_uop[`CPU_DISPATCH_PC_OFF +: 32]            = buf_uop[`CPU_DISPATCH_PC_OFF +: 32];
-    dec_uop[`CPU_DISPATCH_INST_OFF +: 32]          = buf_uop[`CPU_DISPATCH_INST_OFF +: 32];
-    dec_uop[`CPU_DISPATCH_IMM_OFF +: 32]           = buf_uop[`CPU_DISPATCH_IMM_OFF +: 32];
-    dec_uop[`CPU_DISPATCH_RD_OFF +: 5]             = buf_uop[`CPU_DISPATCH_RD_OFF +: 5];
-    dec_uop[`CPU_DISPATCH_REG_WE_OFF]              = buf_uop[`CPU_DISPATCH_REG_WE_OFF];
-    dec_uop[`CPU_DISPATCH_ALU_OP_OFF +: 5]         = buf_uop[`CPU_DISPATCH_ALU_OP_OFF +: 5];
-    dec_uop[`CPU_DISPATCH_A_SEL_OFF +: 2]          = buf_uop[`CPU_DISPATCH_A_SEL_OFF +: 2];
-    dec_uop[`CPU_DISPATCH_B_SEL_OFF]               = buf_uop[`CPU_DISPATCH_B_SEL_OFF];
-    dec_uop[`CPU_DISPATCH_WB_SEL_OFF +: 2]         = buf_uop[`CPU_DISPATCH_WB_SEL_OFF +: 2];
-    dec_uop[`CPU_DISPATCH_IS_BRANCH_OFF]           = buf_uop[`CPU_DISPATCH_IS_BRANCH_OFF];
-    dec_uop[`CPU_DISPATCH_IS_JAL_OFF]              = buf_uop[`CPU_DISPATCH_IS_JAL_OFF];
-    dec_uop[`CPU_DISPATCH_IS_JALR_OFF]             = buf_uop[`CPU_DISPATCH_IS_JALR_OFF];
-    dec_uop[`CPU_DISPATCH_IS_LOAD_OFF]             = buf_uop[`CPU_DISPATCH_IS_LOAD_OFF];
-    dec_uop[`CPU_DISPATCH_IS_STORE_OFF]            = buf_uop[`CPU_DISPATCH_IS_STORE_OFF];
-    dec_uop[`CPU_DISPATCH_ILLEGAL_OFF]             = buf_uop[`CPU_DISPATCH_ILLEGAL_OFF];
-    dec_uop[`CPU_DISPATCH_MEM_SIZE_OFF +: 2]       = buf_uop[`CPU_DISPATCH_MEM_SIZE_OFF +: 2];
-    dec_uop[`CPU_DISPATCH_MEM_UNSIGNED_OFF]        = buf_uop[`CPU_DISPATCH_MEM_UNSIGNED_OFF];
-    dec_uop[`CPU_DECODE_RS1_OFF +: 5]              = buf_uop[`CPU_DECODE_RS1_OFF +: 5];
-    dec_uop[`CPU_DECODE_RS2_OFF +: 5]              = buf_uop[`CPU_DECODE_RS2_OFF +: 5];
-
-    dec_pred_taken[0]  = buf_pred_taken;
-    dec_pred_target[0 +: 32] = buf_pred_target;
+    for (i_out = 0; i_out < W; i_out = i_out + 1) begin
+      dec_valid[i_out] = all_full;
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_PC_OFF +: 32] =
+          slot_uop[i_out][`CPU_DISPATCH_PC_OFF +: 32];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_INST_OFF +: 32] =
+          slot_uop[i_out][`CPU_DISPATCH_INST_OFF +: 32];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_IMM_OFF +: 32] =
+          slot_uop[i_out][`CPU_DISPATCH_IMM_OFF +: 32];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_RD_OFF +: 5] =
+          slot_uop[i_out][`CPU_DISPATCH_RD_OFF +: 5];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_REG_WE_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_REG_WE_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_ALU_OP_OFF +: 5] =
+          slot_uop[i_out][`CPU_DISPATCH_ALU_OP_OFF +: 5];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_A_SEL_OFF +: 2] =
+          slot_uop[i_out][`CPU_DISPATCH_A_SEL_OFF +: 2];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_B_SEL_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_B_SEL_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_WB_SEL_OFF +: 2] =
+          slot_uop[i_out][`CPU_DISPATCH_WB_SEL_OFF +: 2];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_IS_BRANCH_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_IS_BRANCH_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_IS_JAL_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_IS_JAL_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_IS_JALR_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_IS_JALR_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_IS_LOAD_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_IS_LOAD_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_IS_STORE_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_IS_STORE_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_ILLEGAL_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_ILLEGAL_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_MEM_SIZE_OFF +: 2] =
+          slot_uop[i_out][`CPU_DISPATCH_MEM_SIZE_OFF +: 2];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DISPATCH_MEM_UNSIGNED_OFF] =
+          slot_uop[i_out][`CPU_DISPATCH_MEM_UNSIGNED_OFF];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DECODE_RS1_OFF +: 5] =
+          slot_uop[i_out][`CPU_DECODE_RS1_OFF +: 5];
+      dec_uop[i_out*`CPU_DECODE_W + `CPU_DECODE_RS2_OFF +: 5] =
+          slot_uop[i_out][`CPU_DECODE_RS2_OFF +: 5];
+      dec_pred_taken[i_out] = slot_pred_taken[i_out];
+      dec_pred_target[i_out*32 +: 32] = slot_pred_target[i_out];
+    end
   end
 
-  // ---- 时序 --------------------------------------------------------------
+  // ---- slot 写入/释放 ----------------------------------------------------
+  integer i_slot;
   always_ff @(posedge clk) begin
     if (reset || redirect_valid) begin
-      buf_valid <= 1'b0;
+      slot_valid <= '0;
+      fill_ptr   <= '0;
     end else begin
       if (resp_valid && resp_ready) begin
-        buf_valid         <= 1'b1;
-        buf_uop[`CPU_DISPATCH_PC_OFF +: 32]      <= resp_pc;
-        buf_uop[`CPU_DISPATCH_INST_OFF +: 32]    <= resp_inst;
-        buf_uop[`CPU_DISPATCH_IMM_OFF +: 32]     <= dec_imm;
-        buf_uop[`CPU_DISPATCH_RD_OFF +: 5]       <= dec_rd;
-        buf_uop[`CPU_DISPATCH_REG_WE_OFF]        <= dec_reg_we;
-        buf_uop[`CPU_DISPATCH_ALU_OP_OFF +: 5]   <= dec_alu_op;
-        buf_uop[`CPU_DISPATCH_A_SEL_OFF +: 2]    <= dec_a_sel;
-        buf_uop[`CPU_DISPATCH_B_SEL_OFF]         <= dec_b_sel;
-        buf_uop[`CPU_DISPATCH_WB_SEL_OFF +: 2]   <= dec_wb_sel;
-        buf_uop[`CPU_DISPATCH_IS_BRANCH_OFF]     <= dec_is_branch;
-        buf_uop[`CPU_DISPATCH_IS_JAL_OFF]        <= dec_is_jal;
-        buf_uop[`CPU_DISPATCH_IS_JALR_OFF]       <= dec_is_jalr;
-        buf_uop[`CPU_DISPATCH_IS_LOAD_OFF]       <= dec_is_load;
-        buf_uop[`CPU_DISPATCH_IS_STORE_OFF]      <= dec_is_store;
-        buf_uop[`CPU_DISPATCH_ILLEGAL_OFF]       <= dec_illegal;
-        buf_uop[`CPU_DISPATCH_MEM_SIZE_OFF +: 2] <= dec_mem_size;
-        buf_uop[`CPU_DISPATCH_MEM_UNSIGNED_OFF]  <= dec_mem_unsigned;
-        buf_uop[`CPU_DECODE_RS1_OFF +: 5]        <= dec_rs1;
-        buf_uop[`CPU_DECODE_RS2_OFF +: 5]        <= dec_rs2;
-        buf_pred_taken                            <= bpu_taken;
-        buf_pred_target                           <= bpu_target;
-      end else if (buf_valid && rename_ready) begin
-        buf_valid <= 1'b0;
+        for (i_slot = 0; i_slot < W; i_slot = i_slot + 1) begin
+          if (i_slot == fill_ptr) begin
+            slot_valid[i_slot] <= 1'b1;
+            slot_uop[i_slot][`CPU_DISPATCH_PC_OFF +: 32]      <= resp_pc;
+            slot_uop[i_slot][`CPU_DISPATCH_INST_OFF +: 32]    <= resp_inst;
+            slot_uop[i_slot][`CPU_DISPATCH_IMM_OFF +: 32]     <= dec_imm;
+            slot_uop[i_slot][`CPU_DISPATCH_RD_OFF +: 5]       <= dec_rd;
+            slot_uop[i_slot][`CPU_DISPATCH_REG_WE_OFF]        <= dec_reg_we;
+            slot_uop[i_slot][`CPU_DISPATCH_ALU_OP_OFF +: 5]   <= dec_alu_op;
+            slot_uop[i_slot][`CPU_DISPATCH_A_SEL_OFF +: 2]    <= dec_a_sel;
+            slot_uop[i_slot][`CPU_DISPATCH_B_SEL_OFF]         <= dec_b_sel;
+            slot_uop[i_slot][`CPU_DISPATCH_WB_SEL_OFF +: 2]   <= dec_wb_sel;
+            slot_uop[i_slot][`CPU_DISPATCH_IS_BRANCH_OFF]     <= dec_is_branch;
+            slot_uop[i_slot][`CPU_DISPATCH_IS_JAL_OFF]        <= dec_is_jal;
+            slot_uop[i_slot][`CPU_DISPATCH_IS_JALR_OFF]       <= dec_is_jalr;
+            slot_uop[i_slot][`CPU_DISPATCH_IS_LOAD_OFF]       <= dec_is_load;
+            slot_uop[i_slot][`CPU_DISPATCH_IS_STORE_OFF]      <= dec_is_store;
+            slot_uop[i_slot][`CPU_DISPATCH_ILLEGAL_OFF]       <= dec_illegal;
+            slot_uop[i_slot][`CPU_DISPATCH_MEM_SIZE_OFF +: 2] <= dec_mem_size;
+            slot_uop[i_slot][`CPU_DISPATCH_MEM_UNSIGNED_OFF]  <= dec_mem_unsigned;
+            slot_uop[i_slot][`CPU_DECODE_RS1_OFF +: 5]        <= dec_rs1;
+            slot_uop[i_slot][`CPU_DECODE_RS2_OFF +: 5]        <= dec_rs2;
+            slot_pred_taken[i_slot]  <= bpu_taken;
+            slot_pred_target[i_slot] <= bpu_target;
+          end
+        end
+        fill_ptr <= fill_ptr + 1'b1;
+      end
+
+      if (all_full && rename_ready) begin
+        slot_valid <= '0;
+        fill_ptr   <= '0;
       end
     end
   end
