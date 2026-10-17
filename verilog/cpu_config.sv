@@ -59,14 +59,14 @@
 
 // ---- 派生位宽（由上面的参数推导，保持一致）----------------------------------
 `ifndef CPU_ROB_TAG_W
-  `define CPU_ROB_TAG_W $clog2(CPU_ROB_DEPTH)
+  `define CPU_ROB_TAG_W $clog2(`CPU_ROB_DEPTH)
 `endif
 `ifndef CPU_PRF_IDX_W
-  `define CPU_PRF_IDX_W $clog2(CPU_PRF_SIZE)
+  `define CPU_PRF_IDX_W $clog2(`CPU_PRF_SIZE)
 `endif
 `ifndef CPU_RS_IDX_W
-  `define CPU_RS_IDX_W $clog2(CPU_RS_DEPTH)
+  `define CPU_RS_IDX_W $clog2(`CPU_RS_DEPTH)
 `endif
 `ifndef CPU_LSQ_IDX_W
-  `define CPU_LSQ_IDX_W $clog2(CPU_LSQ_DEPTH)
+  `define CPU_LSQ_IDX_W $clog2(`CPU_LSQ_DEPTH)
 `endif
