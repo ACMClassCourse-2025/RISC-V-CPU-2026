@@ -17,3 +17,6 @@ __pycache__/
 
 # Downloaded course hardware tools.
 *.AppImage
+
+# Local handoff notes (not committed).
+prompt.md
