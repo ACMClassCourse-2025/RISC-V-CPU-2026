@@ -52,6 +52,19 @@
 `define CPU_DISPATCH_LSQ_ID_OFF       (124 + 3*`CPU_PRFD)
 `define CPU_DISPATCH_ROB_IDX_OFF      (124 + 3*`CPU_PRFD + `CPU_LSQD)
 
+// ---- 前端内部：decoded uop / renamed uop（不含 rob_idx）--------------------
+// decoded uop：dispatch 的低 122 位 + rs1/rs2（rename 需要源寄存器号）。
+// renamed uop：dispatch 去掉 rob_idx 后的全部字段（含 dest/src tag、lsq_id）。
+`define CPU_DECODE_W        132
+`define CPU_DECODE_RS1_OFF  122
+`define CPU_DECODE_RS2_OFF  127
+`define CPU_DECODE_BUS_W    (`CPU_WD * `CPU_DECODE_W)
+`define CPU_DECODE_LANE(i)  ((i) * `CPU_DECODE_W)
+
+`define CPU_RENAME_W        (`CPU_DISPATCH_W - `CPU_ROBD)
+`define CPU_RENAME_BUS_W    (`CPU_WD * `CPU_RENAME_W)
+`define CPU_RENAME_LANE(i)  ((i) * `CPU_RENAME_W)
+
 // ---- cdb[R]（乙 → 甲 + 乙内部）---------------------------------------------
 `define CPU_CDB_W        (34 + `CPU_PRFD)
 `define CPU_CDB_BUS_W    (`CPU_CDB_NUM * `CPU_CDB_W)

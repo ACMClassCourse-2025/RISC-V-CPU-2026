@@ -61,6 +61,8 @@ int main(int argc, char** argv) {
         {"dispatch_w",             (uint32_t)dut.dispatch_w,             dispatch_w},
         {"dispatch_bus_w",         (uint32_t)dut.dispatch_bus_w,         dispatch_w * W},
         {"dispatch_lane1",         (uint32_t)dut.dispatch_lane1,         dispatch_w},
+        {"decode_w",               (uint32_t)dut.decode_w,               132},
+        {"rename_w",               (uint32_t)dut.rename_w,               124 + 3 * P + L},
         {"dispatch_src2_tag_off",  (uint32_t)dut.dispatch_src2_tag_off,  123 + 2 * P},
         {"dispatch_lsq_id_off",    (uint32_t)dut.dispatch_lsq_id_off,    124 + 3 * P},
         {"dispatch_rob_idx_off",   (uint32_t)dut.dispatch_rob_idx_off,   124 + 3 * P + L},

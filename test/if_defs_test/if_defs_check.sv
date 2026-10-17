@@ -6,6 +6,8 @@ module if_defs_check (
   output logic [31:0] dispatch_w,
   output logic [31:0] dispatch_bus_w,
   output logic [31:0] dispatch_lane1,
+  output logic [31:0] decode_w,
+  output logic [31:0] rename_w,
   output logic [31:0] dispatch_src2_tag_off,
   output logic [31:0] dispatch_lsq_id_off,
   output logic [31:0] dispatch_rob_idx_off,
@@ -28,6 +30,8 @@ module if_defs_check (
   assign dispatch_w           = `CPU_DISPATCH_W;
   assign dispatch_bus_w       = `CPU_DISPATCH_BUS_W;
   assign dispatch_lane1       = `CPU_DISPATCH_LANE(1);
+  assign decode_w             = `CPU_DECODE_W;
+  assign rename_w             = `CPU_RENAME_W;
   assign dispatch_src2_tag_off = `CPU_DISPATCH_SRC2_TAG_OFF;
   assign dispatch_lsq_id_off  = `CPU_DISPATCH_LSQ_ID_OFF;
   assign dispatch_rob_idx_off = `CPU_DISPATCH_ROB_IDX_OFF;
