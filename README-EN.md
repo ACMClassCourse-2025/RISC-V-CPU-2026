@@ -256,6 +256,8 @@ For detailed timing diagrams and handshake rules, refer to [`docs/axi4-lite.md`]
 | `SYNTH_OUT` | `$(BUILD)/synth` | Synthesis output root; each mode writes to its own subdirectory |
 | `MODE` | `opt` | Synthesis mode: `opt` or `diagnose` |
 | `CLOCK_PERIOD_NS` | `2.0` | Target clock period in ns for synthesis and timing analysis |
+| `ABC_DRIVING_CELL` | `INVx1_ASAP7_75t_R` | Driving cell model for ABC combinational logic input boundaries |
+| `ABC_LOAD_FF` | `5.0` | Load on ABC combinational logic output boundaries, in fF |
 | `JOBS` | `4` | Parallel compilation threads |
 | `MAX_CYCLES` | `1000000` | Maximum simulation cycle limit |
 | `LATENCY` | `10` | Memory latency in cycles |
@@ -350,6 +352,14 @@ During optimization, first run **`diagnose` mode** to locate area bottlenecks. A
 - Estimated frequency is calculated from the critical path delay as the reciprocal of the minimum clock period ($1 / T_{\min}$).
 - A positive worst setup slack (`+`) means all analyzed paths meet the target clock period with margin to spare; a negative slack (`-`) indicates timing violations on the critical path.
 
+ABC defaults to an `INVx1_ASAP7_75t_R` driving cell model and a `5.0 fF` output load. It writes `abc.constr` and enables buffering and cell sizing. Tune these values on the command line or in `config.mk`:
+
+```sh
+make synth ABC_DRIVING_CELL=BUFx2_ASAP7_75t_R ABC_LOAD_FF=1.0
+```
+
+`-constr` supplies ABC with an input driving cell (`set_driving_cell`) and output load capacitance (`set_load`). It also adds buffering and cell sizing to the default synthesis flow to improve timing on nets with high fanout. See the [official Yosys ABC documentation](https://yosyshq.readthedocs.io/projects/yosys/en/v0.49/cmd/abc.html) for the file format and default flow.
+
 **Module Tree Breakdown (diagnose Mode)**:
 In `diagnose` mode, the report displays an instance-level breakdown tree (repeated instances of the same module are accounted for separately):
 - **`Area (um^2)`**: Including the module itself and all of its submodules.
@@ -365,6 +375,7 @@ Synthesis outputs are stored in `$(SYNTH_OUT)/$(MODE)/` (`build/synth/opt/` or `
 | `report.json` | Machine-readable structured JSON report containing area, timing, hierarchy, tool versions, and source hashes |
 | `timing.rpt` | Detailed OpenSTA critical path report with per-cell delay and slack breakdown |
 | `area.json` / `timing.json` | Isolated area and timing metric JSON files |
+| `abc.constr` | Driving cell and output load constraints used by ABC |
 | `constraints.sdc` | SDC clock and interface constraints used during timing analysis |
 
 ### 6. Clean Build Artifacts

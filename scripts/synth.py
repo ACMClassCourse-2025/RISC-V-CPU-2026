@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -34,6 +35,10 @@ def main():
     parser.add_argument("--mode", choices=("opt", "diagnose"), default="opt")
     parser.add_argument("--clock-period", type=float, default=2.0, help="target clock period in ns (default: 2)")
     parser.add_argument("--clock-port", default="clock", help="top-level clock input (default: clock)")
+    parser.add_argument("--abc-driving-cell", default="INVx1_ASAP7_75t_R",
+                        help="ABC input driving cell (default: INVx1_ASAP7_75t_R)")
+    parser.add_argument("--abc-load-ff", type=float, default=5.0,
+                        help="ABC output load in fF (default: 5); OpenSTA loads stay fixed")
     parser.add_argument("--blackboxes", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--appimage", default=str(DEFAULT_APPIMAGE))
     parser.add_argument("--yosys", help="custom Yosys executable")
@@ -48,6 +53,10 @@ def main():
         (out / name).unlink(missing_ok=True)
     if not math.isfinite(args.clock_period) or args.clock_period <= 0:
         parser.error("--clock-period must be a finite positive number in ns")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", args.abc_driving_cell):
+        parser.error("--abc-driving-cell must be a cell name containing letters, digits or underscores")
+    if not math.isfinite(args.abc_load_ff) or args.abc_load_ff < 0:
+        parser.error("--abc-load-ff must be a finite nonnegative number in fF")
     (out / "blackboxes.v").unlink(missing_ok=True)
     if args.blackboxes:
         parser.error("--blackboxes has been removed; instantiate sram_fakeram for library-backed SRAM")
@@ -97,6 +106,9 @@ def main():
     all_library_args = " ".join("-liberty " + quote(lib) for lib in [*libs, *ram_libs])
     library_reads = ["read_liberty -lib -ignore_miss_func " + quote(lib) for lib in [*libs, *ram_libs]]
     seq = next(lib for lib in libs if "_SEQ_" in lib.name)
+    # Supplying constraints enables ABC's buffering and cell sizing passes.
+    abc_constraints = out / "abc.constr"
+    abc_constraints.write_text(f"set_driving_cell {args.abc_driving_cell}\nset_load {args.abc_load_ff:.12g}\n")
     script = [
         "read_json " + quote(prepared),
         "read_verilog " + quote(wrappers),
@@ -106,7 +118,8 @@ def main():
         "check -assert",
         "select -assert-none a:init t:$dlatch* t:$_DLATCH*",
         "dfflibmap -liberty " + quote(seq),
-        "abc " + ("-exe " + quote(abc) + " " if abc else "") + library_args + f" -D {args.clock_period * 1000:.9g}",
+        "abc " + ("-exe " + quote(abc) + " " if abc else "") + library_args
+        + " -constr " + quote(abc_constraints) + f" -D {args.clock_period * 1000:.9g}",
         "clean",
         "delete t:$scopeinfo",
         "clean -purge",
@@ -131,6 +144,7 @@ def main():
     def identities(paths):
         return [{"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in paths]
     report = {"schema_version": 1, "mode": args.mode, "output_directory": str(out),
+              "abc_constraints": {"driving_cell": args.abc_driving_cell, "output_load_ff": args.abc_load_ff},
               "area": area, "timing": timing,
               "inputs": identities([*sources, RAM_SOURCE]), "libraries": identities([*libs, *ram_libs]),
               "sram_model": MODEL,

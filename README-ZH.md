@@ -257,6 +257,8 @@ module student_top (
 | `SYNTH_OUT` | `$(BUILD)/synth` | 综合产物输出根目录；每种模式写入各自的子目录 |
 | `MODE` | `opt` | 综合模式：`opt` 或 `diagnose` |
 | `CLOCK_PERIOD_NS` | `2.0` | 综合与时序分析的目标时钟周期，单位 ns |
+| `ABC_DRIVING_CELL` | `INVx1_ASAP7_75t_R` | ABC 组合逻辑输入边界的驱动单元模型 |
+| `ABC_LOAD_FF` | `5.0` | ABC 组合逻辑输出边界的负载电容，单位 fF |
 | `JOBS` | `4` | 多线程并行编译任务数 |
 | `MAX_CYCLES` | `1000000` | 单测试点最大仿真周期数限制 |
 | `LATENCY` | `10` | 内存访问响应周期延迟 |
@@ -351,6 +353,14 @@ make synth CLOCK_PERIOD_NS=1.0      # opt 模式：指定目标时钟周期为 1
 - 估算最高频率（Estimated frequency）是基于最差关键路径延迟推算得出的最小时钟周期倒数（$1 / T_{\min}$）。
 - 建立时间裕量（Worst Setup Slack）为正（`+`）表示所有时序路径均满足设定的目标周期要求；裕量为负（`-`）则表示最差路径超时，存在建立时间违例（Timing Violation）。
 
+ABC 默认使用 `INVx1_ASAP7_75t_R` 驱动模型和 `5.0 fF` 输出负载，生成 `abc.constr` 并启用缓冲插入和单元尺寸优化。可通过下面的参数微调，或将参数写入 `config.mk`：
+
+```sh
+make synth ABC_DRIVING_CELL=BUFx2_ASAP7_75t_R ABC_LOAD_FF=1.0
+```
+
+`-constr` 向 ABC 提供输入驱动单元（`set_driving_cell`）和输出负载电容（`set_load`），并让默认综合流程增加缓冲插入和单元尺寸优化，以改善高扇出网络的时序。文件格式和默认流程详见 [Yosys 官方 ABC 文档](https://yosyshq.readthedocs.io/projects/yosys/en/v0.49/cmd/abc.html)。
+
 **模块树面积统计（diagnose 模式）**：
 在 `diagnose` 模式下，报告会按照模块实例层级展开树状明细（同一模块被多次例化时，各实例独立统计）：
 - **`Area (um^2)`**：包含当前模块及其所有子模块的面积总和。
@@ -366,6 +376,7 @@ make synth CLOCK_PERIOD_NS=1.0      # opt 模式：指定目标时钟周期为 1
 | `report.json` | 机器可读的结构化 JSON 报告，包含面积、时序、模块层次、工具版本及源码校验信息 |
 | `timing.rpt` | OpenSTA 生成的详细关键路径报告，包含路径上逐级门级单元延迟与 Slack 明细 |
 | `area.json` / `timing.json` | 独立的面积与时序数据 |
+| `abc.constr` | ABC 使用的驱动单元与输出负载约束 |
 | `constraints.sdc` | 时序分析使用的时钟及 I/O 约束定义文件 |
 
 ### 6. 清理构建产物
