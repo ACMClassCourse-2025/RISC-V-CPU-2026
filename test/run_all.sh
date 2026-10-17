@@ -55,6 +55,9 @@ run "pc_unit" sh test/pc_unit_test/run.sh $quick --seed "$seed"
 run "bpu default" sh test/bpu_test/run.sh $quick --seed "$seed"
 run "bpu 4/6 bits" env BPU_BTB_INDEX_BITS=4 BPU_BHT_INDEX_BITS=6 \
     sh test/bpu_test/run.sh $quick --seed "$seed"
+run "bpu gshare 8-bit" sh test/bpu_gshare_test/run.sh $quick --seed "$seed"
+run "bpu gshare 4-bit" env GHIST_BITS=4 \
+    sh test/bpu_gshare_test/run.sh $quick --cycles 5000 --seed "$seed"
 run "if_defs default" sh test/if_defs_test/run.sh
 run "if_defs W=2/PRF=96/ROB=64" env \
     IF_TEST_W=2 IF_TEST_PRF=96 IF_TEST_CDB=2 IF_TEST_ROB=64 IF_TEST_LSQ=16 \
