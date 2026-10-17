@@ -31,6 +31,8 @@ DEFAULTS = {
     "dcache_index_bits": 10,
     "dcache_ways": 1,
     "dcache_line_bytes": 4,
+    "btb_index_bits": 6,
+    "bht_index_bits": 8,
 }
 
 
@@ -53,6 +55,9 @@ def validate(args):
         if not (lo <= value <= hi) or not is_power_of_two(value):
             errors.append(f"--{name} must be a power of two in {lo}..{hi}")
     for name in ("icache_index_bits", "dcache_index_bits"):
+        if not 2 <= getattr(args, name) <= 16:
+            errors.append(f"--{name.replace('_', '-')} must be 2..16")
+    for name in ("btb_index_bits", "bht_index_bits"):
         if not 2 <= getattr(args, name) <= 16:
             errors.append(f"--{name.replace('_', '-')} must be 2..16")
     for name in ("icache_ways", "dcache_ways"):
@@ -83,6 +88,8 @@ def render(args):
             f"--dcache-index-bits {args.dcache_index_bits}",
             f"--dcache-ways {args.dcache_ways}",
             f"--dcache-line-bytes {args.dcache_line_bytes}",
+            f"--btb-index-bits {args.btb_index_bits}",
+            f"--bht-index-bits {args.bht_index_bits}",
         ]
     )
     return f"""// -----------------------------------------------------------------------------
@@ -136,6 +143,14 @@ def render(args):
   `define CPU_DCACHE_LINE_BYTES {args.dcache_line_bytes}
 `endif
 
+// ---- 分支预测参数（BTB / BHT 项数 = 2^index_bits）---------------------------
+`ifndef CPU_BTB_INDEX_BITS
+  `define CPU_BTB_INDEX_BITS {args.btb_index_bits}
+`endif
+`ifndef CPU_BHT_INDEX_BITS
+  `define CPU_BHT_INDEX_BITS {args.bht_index_bits}
+`endif
+
 // ---- 派生位宽（由上面的参数推导，保持一致）----------------------------------
 `ifndef CPU_ROB_TAG_W
   `define CPU_ROB_TAG_W $clog2(CPU_ROB_DEPTH)
@@ -167,6 +182,8 @@ def main():
     parser.add_argument("--dcache-index-bits", type=int, default=DEFAULTS["dcache_index_bits"])
     parser.add_argument("--dcache-ways", type=int, default=DEFAULTS["dcache_ways"])
     parser.add_argument("--dcache-line-bytes", type=int, default=DEFAULTS["dcache_line_bytes"])
+    parser.add_argument("--btb-index-bits", type=int, default=DEFAULTS["btb_index_bits"])
+    parser.add_argument("--bht-index-bits", type=int, default=DEFAULTS["bht_index_bits"])
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT,
                         help=f"output file (default: {DEFAULT_OUT})")
     parser.add_argument("--stdout", action="store_true", help="print instead of writing")
@@ -196,7 +213,8 @@ def main():
     print(f"  issue_width={args.issue_width} rob={args.rob} prf={args.prf} "
           f"rs={args.rs} cdb={args.cdb_num} lsq={args.lsq}")
     print(f"  icache={args.icache_index_bits}b/{args.icache_ways}w/{args.icache_line_bytes}B "
-          f"dcache={args.dcache_index_bits}b/{args.dcache_ways}w/{args.dcache_line_bytes}B")
+          f"dcache={args.dcache_index_bits}b/{args.dcache_ways}w/{args.dcache_line_bytes}B "
+          f"btb={args.btb_index_bits}b bht={args.bht_index_bits}b")
     return 0
 
 

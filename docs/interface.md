@@ -48,6 +48,7 @@ PRF = `CPU_PRF_IDX_W`（默认 6），LSQ = `CPU_LSQ_IDX_W`（默认 3），ROB 
 | `CPU_RS_DEPTH` | 8 | 每个发射队列深度；`CPU_RS_IDX_W = $clog2(CPU_RS_DEPTH)` |
 | `CPU_LSQ_DEPTH` | 8 | LSQ 深度；`CPU_LSQ_IDX_W = $clog2(CPU_LSQ_DEPTH)` |
 | `CPU_ICACHE_*` / `CPU_DCACHE_*` | 10/1/4 | index bits / ways / line bytes |
+| `CPU_BTB_INDEX_BITS` / `CPU_BHT_INDEX_BITS` | 6 / 8 | BPU 项数 = 2^index_bits（BTB 64 项 / BHT 256 项） |
 
 以下偏移列中 `PRF` = `CPU_PRF_IDX_W`（默认 6），`LSQ` = `CPU_LSQ_IDX_W`（默认 3），`ROB` = `CPU_ROB_TAG_W`（默认 5）。
 

@@ -2,7 +2,7 @@
 // cpu_config.sv — 全局参数配置（由 tools/config_gen.py 生成，请勿手改）
 //
 // 生成命令：
-//   tools/config_gen.py --issue-width 1 --rob 32 --prf 64 --rs 8 --cdb-num 1 --lsq 8 --icache-index-bits 10 --icache-ways 1 --icache-line-bytes 4 --dcache-index-bits 10 --dcache-ways 1 --dcache-line-bytes 4
+//   tools/config_gen.py --issue-width 1 --rob 32 --prf 64 --rs 8 --cdb-num 1 --lsq 8 --icache-index-bits 10 --icache-ways 1 --icache-line-bytes 4 --dcache-index-bits 10 --dcache-ways 1 --dcache-line-bytes 4 --btb-index-bits 6 --bht-index-bits 8
 //
 // 换参数 = 重新生成 + 重编译，不改任何 RTL。每个宏都有 `ifndef 保护，
 // 因此也可以用 Verilator/Yosys 的 -D 选项临时覆盖单个参数。
@@ -47,6 +47,14 @@
 `endif
 `ifndef CPU_DCACHE_LINE_BYTES
   `define CPU_DCACHE_LINE_BYTES 4
+`endif
+
+// ---- 分支预测参数（BTB / BHT 项数 = 2^index_bits）---------------------------
+`ifndef CPU_BTB_INDEX_BITS
+  `define CPU_BTB_INDEX_BITS 6
+`endif
+`ifndef CPU_BHT_INDEX_BITS
+  `define CPU_BHT_INDEX_BITS 8
 `endif
 
 // ---- 派生位宽（由上面的参数推导，保持一致）----------------------------------
