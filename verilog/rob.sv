@@ -67,6 +67,7 @@ module rob #(
   output logic [`CPU_PRF_SIZE-1:0]     recover_free_mask,
   output logic [`CPU_PRF_SIZE-1:0]     recover_busy_mask,
   output logic [`CPU_LSQ_IDX_W-1:0]    recover_lsq_ptr,
+  output logic [32*`CPU_PRF_IDX_W-1:0] recover_rat,
 
   // 重定向 / squash
   output logic                         redirect_valid,
@@ -236,7 +237,25 @@ module rob #(
   logic [`CPU_PRF_SIZE-1:0] free_mask_c;
   logic [`CPU_PRF_SIZE-1:0] busy_mask_c;
   logic [LW-1:0]            lsq_ptr_c;
+  logic [32*PW-1:0]         recover_rat_c;
   integer i_mask, i_reg, i_mask_idx;
+  integer i_rat, i_rat_idx;
+
+  // 恢复时的 RAT：从已提交 crat 出发，按程序序重放 branch 及更老的
+  // 在飞表项。仅靠 crat 会丢失尚未提交的 branch 自身 rd 映射（例如
+  // jalr 写 ra），导致恢复后重新取指的指令读到旧物理寄存器。
+  always_comb begin
+    recover_rat_c = '0;
+    for (i_rat = 0; i_rat < 32; i_rat = i_rat + 1)
+      recover_rat_c[i_rat*PW +: PW] = crat[i_rat];
+    for (i_rat = 0; i_rat < DEPTH; i_rat = i_rat + 1) begin
+      i_rat_idx = (head + i_rat) & MASK;
+      if (entry_valid[i_rat_idx] && (i_rat <= br_age_i) &&
+          entry_reg_we[i_rat_idx])
+        recover_rat_c[entry_rd[i_rat_idx]*PW +: PW] =
+            entry_dest_tag[i_rat_idx];
+    end
+  end
 
   always_comb begin
     free_mask_c    = '1;
@@ -322,6 +341,7 @@ module rob #(
       recover_free_mask <= '0;
       recover_busy_mask <= '0;
       recover_lsq_ptr   <= '0;
+      recover_rat       <= '0;
       redirect_valid    <= 1'b0;
       redirect_pc       <= 32'b0;
       squash_valid      <= 1'b0;
@@ -360,6 +380,7 @@ module rob #(
         recover_free_mask <= free_mask_c;
         recover_busy_mask <= busy_mask_c;
         recover_lsq_ptr   <= lsq_ptr_c;
+        recover_rat       <= recover_rat_c;
         redirect_valid    <= 1'b1;
         redirect_pc       <= br_update_taken ? br_update_target :
                              (entry_pc[br_idx] + 32'd4);

@@ -65,6 +65,7 @@ module core_ooo #(
   logic [W-1:0]               rec_valid, cm_valid, cm_reg_we, cm_free_valid;
   logic [`CPU_PRF_SIZE-1:0]   rec_free, rec_busy;
   logic [LW-1:0]              rec_lsq;
+  logic [32*PW-1:0]           rec_rat;
   logic [W*5-1:0]             cm_rd;
   logic [W*PW-1:0]            cm_dest, cm_free;
 
@@ -183,7 +184,8 @@ module core_ooo #(
     .recover_valid     (rec_valid),
     .recover_free_mask (rec_free),
     .recover_busy_mask (rec_busy),
-    .recover_lsq_ptr   (rec_lsq)
+    .recover_lsq_ptr   (rec_lsq),
+    .recover_rat       (rec_rat)
   );
 
   // ---- ROB ----------------------------------------------------------------
@@ -226,6 +228,7 @@ module core_ooo #(
     .recover_free_mask  (rec_free),
     .recover_busy_mask  (rec_busy),
     .recover_lsq_ptr    (rec_lsq),
+    .recover_rat        (rec_rat),
     .redirect_valid     (rob_redirect_valid),
     .redirect_pc        (rob_redirect_pc),
     .squash_valid       (rob_sq_valid),

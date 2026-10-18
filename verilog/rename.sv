@@ -55,7 +55,8 @@ module rename #(
   input  logic                         recover_valid,
   input  logic [`CPU_PRF_SIZE-1:0]     recover_free_mask,
   input  logic [`CPU_PRF_SIZE-1:0]     recover_busy_mask,
-  input  logic [`CPU_LSQ_IDX_W-1:0]    recover_lsq_ptr
+  input  logic [`CPU_LSQ_IDX_W-1:0]    recover_lsq_ptr,
+  input  logic [32*`CPU_PRF_IDX_W-1:0] recover_rat
 );
 
   localparam integer PRF = `CPU_PRF_SIZE;
@@ -298,7 +299,8 @@ module rename #(
       free_count <= FCW'(PRF - 1);
       lsq_ptr    <= '0;
     end else if (recover_valid) begin
-      rat        <= crat;
+      for (i_ff = 0; i_ff < 32; i_ff = i_ff + 1)
+        rat[i_ff] <= recover_rat[i_ff*PW +: PW];
       free_vec   <= recover_free_mask & ~{{(PRF-1){1'b0}}, 1'b1};
       busy       <= recover_busy_mask & ~{{(PRF-1){1'b0}}, 1'b1};
       free_count <= recover_count;

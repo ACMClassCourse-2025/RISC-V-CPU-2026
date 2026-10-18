@@ -107,6 +107,7 @@ struct Inputs {
     uint64_t recover_free = 0;
     uint64_t recover_busy = 0;
     uint8_t  recover_lsq = 0;
+    uint32_t recover_rat[32] = {};
     bool     out_ready = true;
 };
 
@@ -144,7 +145,7 @@ struct Ref {
 
     void apply(const Inputs& in, bool in_ready, const Exp& exp) {
         if (in.recover) {
-            for (int i = 0; i < 32; ++i) rat[i] = crat[i];
+            for (int i = 0; i < 32; ++i) rat[i] = in.recover_rat[i];
             for (int i = 0; i < PRF; ++i) {
                 free[i] = ((in.recover_free >> i) & 1u) != 0;
                 busy[i] = ((in.recover_busy >> i) & 1u) != 0;
@@ -259,6 +260,8 @@ struct Harness {
         dut->recover_free_mask = in.recover_free;
         dut->recover_busy_mask = in.recover_busy;
         dut->recover_lsq_ptr = in.recover_lsq;
+        for (int i = 0; i < 32; ++i)
+            put_bits(dut->recover_rat, i * PW, in.recover_rat[i], PW);
         dut->out_ready = in.out_ready;
         dut->clk = 0;
         dut->eval();
@@ -518,6 +521,7 @@ bool run_directed(Harness& h) {
     in.recover_free = free_mask;
     in.recover_busy = 0;
     in.recover_lsq = 0;
+    for (int i = 0; i < 32; ++i) in.recover_rat[i] = h.ref.rat[i];
     h.step(in, "recover");
     if (h.last.in_ready) {
         h.report("directed", "recover should stall input", 0, 1, 0);
