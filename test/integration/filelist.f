@@ -1,0 +1,24 @@
+# P1 integration filelist (test-only; official filelist.f stays with 甲).
+../../verilog/rv32_defs.sv
+../../verilog/cpu_config.sv
+../../verilog/if_defs.sv
+../../verilog/alu.sv
+../../verilog/divider.sv
+../../verilog/prf.sv
+../../verilog/cdb.sv
+../../verilog/issue_queue.sv
+../../verilog/lsq.sv
+../../verilog/lsu.sv
+../../verilog/backend_ooo.sv
+../../verilog/pc_unit.sv
+../../verilog/bpu.sv
+../../verilog/icache_pipe.sv
+../../verilog/decoder.sv
+../../verilog/rename.sv
+../../verilog/commit.sv
+../../verilog/rob.sv
+../../verilog/frontend_ooo.sv
+../../verilog/core_ooo.sv
+../../verilog/mem_subsystem.sv
+../../verilog/axi_mem_if.sv
+../../verilog/student_top_ooo.sv
