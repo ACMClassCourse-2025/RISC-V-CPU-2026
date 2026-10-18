@@ -83,6 +83,8 @@ def main() -> int:
     parser.add_argument("--verilator", help="explicit Verilator executable")
     parser.add_argument("--define", "-D", action="append", default=[],
                         help="Verilog macro override, e.g. -DCPU_ISSUE_WIDTH=2")
+    parser.add_argument("--cxx-define", "-C", action="append", default=[],
+                        help="C++ macro for the testbench, e.g. -CTB_W=2")
     parser.add_argument("--include", "-I", action="append", default=[],
                         help="additional include directory")
     parser.add_argument("--no-run", action="store_true", help="compile only")
@@ -133,6 +135,8 @@ def main() -> int:
         command.append("--trace")
     for define in args.define:
         command.append(f"-D{define}")
+    for define in args.cxx_define:
+        command.extend(["-CFLAGS", f"-D{define}"])
     for include in args.include:
         command.append(f"-I{Path(include).expanduser().resolve()}")
     command.extend(str(path) for path in sources)
