@@ -6,8 +6,14 @@
   黄金模型/`trace_diff`、接口复核、`p0-baseline` tag。
 - P1 后端：`prf.sv`、`cdb.sv`、`issue_queue.sv`、`lsu.sv`、`lsq.sv`、
   `backend_ooo.sv`，以及对应 W=1/W=2 单测。
+- P1 stub：`verilog/stub_front_ooo.sv` + `test/stub_front_test`（W=1/2 队列
+  推送/弹出/commit/squash 透传全 PASS）。
 - 集成顶层：`verilog/student_top_ooo.sv`（模块名 `student_top`，仅用于
   `test/integration/filelist.f`；官方 `verilog/filelist.f` 未改）。
+- 分支：`feat/p1-integration`。跨侧修复提交：
+  `9a4365d`（ROB RAT 重放）、`d101772`（BPU 驱动 PC）、
+  `8fccf25`（squash 结果过滤）、`e61734f`（集成顶层/脚本）、
+  `5b3e330`（stub front）。
 
 ## 当前集成结果
 
