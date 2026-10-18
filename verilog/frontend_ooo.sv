@@ -54,14 +54,16 @@ module frontend_ooo #(
   logic [31:0] pc;
   logic        pc_advance;
   logic        fetch_ready;
+  logic        bpu_redirect;
+  logic [31:0] bpu_redirect_pc;
 
   pc_unit u_pc (
     .clk            (clk),
     .reset          (reset),
     .advance        (pc_advance),
     .stall          (1'b0),
-    .redirect_valid (redirect_valid),
-    .redirect_pc    (redirect_pc),
+    .redirect_valid (redirect_valid || bpu_redirect),
+    .redirect_pc    (redirect_valid ? redirect_pc : bpu_redirect_pc),
     .pc             (pc)
   );
 
@@ -82,7 +84,14 @@ module frontend_ooo #(
   logic        resp_ready;
 
   assign all_full = (fill_ptr == W);
-  assign fetch_valid = backend_ready && !redirect_valid && (fill_ptr < W) && !reset;
+  // BPU 预测 taken 时，本条分支指令已经在本拍被接收进 slot；下一拍 PC
+  // 必须切到预测目标，而不是继续顺序取 fall-through。
+  assign bpu_redirect = resp_valid && resp_ready && !redirect_valid &&
+                        (dec_is_branch || dec_is_jal || dec_is_jalr) &&
+                        bpu_taken;
+  assign bpu_redirect_pc = bpu_target;
+  assign fetch_valid = backend_ready && !redirect_valid && !bpu_redirect &&
+                       (fill_ptr < W) && !reset;
   assign pc_advance  = fetch_valid && fetch_ready;
   assign resp_ready  = backend_ready && !redirect_valid && (fill_ptr < W);
 
@@ -91,7 +100,7 @@ module frontend_ooo #(
   ) u_icache (
     .clk               (clk),
     .reset             (reset),
-    .flush             (redirect_valid),
+    .flush             (redirect_valid || bpu_redirect),
     .fetch_valid       (fetch_valid),
     .fetch_pc          (pc),
     .fetch_ready       (fetch_ready),
