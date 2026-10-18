@@ -22,21 +22,36 @@ module divider (
   assign negative_b = is_signed && b[31];
   always_ff @ (posedge clk or posedge reset) begin
     if (reset) begin
-      rest_u <= negative_a ? -$signed(a) : a;
-      b_u <= negative_b ? -$signed(b) : b;
+      rest_u <= 32'b0;
+      b_u <= 32'b0;
       quot_u <= 32'b0;
+      quotient_mem <= 32'b0;
+      remainder_mem <= 32'b0;
       i <= 5'b11111;
       state <= IDLE;
     end else begin
       unique case (state)
         IDLE: begin
           if (start == 1) begin
-            /* do the special checks, omitted for now */
-            rest_u <= negative_a ? -$signed(a) : a;
-            b_u <= negative_b ? -$signed(b) : b;
-            quot_u <= 32'b0;
-            i <= 5'b11111;
-            state <= RUNNING;
+            if (b == 32'b0) begin
+              // RISC-V M extension: division by zero yields all ones for the
+              // quotient and the original dividend for the remainder.
+              quotient_mem  <= 32'hffff_ffff;
+              remainder_mem <= a;
+              state         <= DONE;
+            end else if (is_signed && (a == 32'h8000_0000) &&
+                         (b == 32'hffff_ffff)) begin
+              // INT_MIN / -1: quotient = INT_MIN, remainder = 0.
+              quotient_mem  <= 32'h8000_0000;
+              remainder_mem <= 32'b0;
+              state         <= DONE;
+            end else begin
+              rest_u <= negative_a ? -$signed(a) : a;
+              b_u <= negative_b ? -$signed(b) : b;
+              quot_u <= 32'b0;
+              i <= 5'b11111;
+              state <= RUNNING;
+            end
           end
         end
         RUNNING: begin

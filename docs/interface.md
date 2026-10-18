@@ -231,3 +231,22 @@ Stub 是接口与真实模块完全一致、行为简化/脚本化的假模块�
 10. 后端恢复：`dispatch` 增加 `rob_idx`（ROB 分配序号）；新增 `squash`（甲→乙，`valid + rob_idx`）用于丢弃错误路径的在飞 uop。
 11. 精确恢复前提：分支/跳转在甲收到 `br_update` 前不得提交；乙保证 `br_update` 不丢失（队列满时自行反压）。
 
+
+## 乙内部：divider（P1 执行端口使用）
+
+`verilog/divider.sv` 是乙内部的多周期串行除法器，不属于甲/乙跨接缝总线，
+但 P1 的 ALU 执行端口会例化它，因此在这里固定时序：
+
+| 信号 | 方向 | 位宽 | 说明 |
+| --- | --- | ---: | --- |
+| `clk` / `reset` | in | 1 | 同步复位 |
+| `start` | in | 1 | 1 拍脉冲；`busy=1` 时忽略 |
+| `is_signed` | in | 1 | 1 = DIV/REM，0 = DIVU/REMU |
+| `a` / `b` | in | 32 | 被除数 / 除数；运算期间保持稳定 |
+| `busy` | out | 1 | 运算中为 1 |
+| `done` | out | 1 | 完成脉冲；**`done=1` 当拍 `quotient/remainder` 已有效** |
+| `quotient` | out | 32 | 商 |
+| `remainder` | out | 32 | 余数 |
+
+边界语义按 RISC-V M 扩展：除零时商为 `0xffff_ffff`、余数为被除数；
+`signed INT_MIN / -1` 时商为 `INT_MIN`、余数为 0。
