@@ -254,6 +254,7 @@ module lsu #(
   logic                         load_result_exception_q;
   logic                         store_complete_valid_q;
   logic [PW-1:0]                store_complete_tag_q;
+  logic [RW-1:0]                store_complete_rob_q;
   logic                         store_complete_exception_q;
 
   assign load_result_valid     = load_result_valid_q;
@@ -283,6 +284,10 @@ module lsu #(
       store_complete_valid_q <= 1'b0;
 
       // squash：等待中的 load 直接取消；已在内存管线中的等响应后丢弃。
+      // store 的 complete 脉冲若属于年轻路径也必须撤销。
+      if (squash_valid && store_complete_valid_q &&
+          is_younger(store_complete_rob_q, squash_rob_idx))
+        store_complete_valid_q <= 1'b0;
       if (load_squash_now) begin
         if (load_waiting && !load_inflight) begin
           load_active   <= 1'b0;
@@ -323,6 +328,7 @@ module lsu #(
       if (store_issue) begin
         store_complete_valid_q     <= 1'b1;
         store_complete_tag_q       <= issue_dest;
+        store_complete_rob_q       <= issue_rob;
         store_complete_exception_q <= issue_illegal;
       end
 

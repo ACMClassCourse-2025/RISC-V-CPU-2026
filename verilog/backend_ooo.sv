@@ -114,6 +114,7 @@ module backend_ooo #(
   // ---------------------------------------------------------------------------
   logic [31:0]   i_pc, i_inst, i_imm;
   logic [PW-1:0] i_dest, i_src1_tag, i_src2_tag;
+  logic [RW-1:0] i_rob;
   logic [4:0]    i_alu_op;
   logic [1:0]    i_a_sel, i_wb_sel;
   logic          i_b_sel, i_reg_we, i_illegal;
@@ -126,6 +127,7 @@ module backend_ooo #(
   assign i_dest        = issue_uop[`CPU_DISPATCH_DEST_TAG_OFF +: PW];
   assign i_src1_tag    = issue_uop[`CPU_DISPATCH_SRC1_TAG_OFF +: PW];
   assign i_src2_tag    = issue_uop[`CPU_DISPATCH_SRC2_TAG_OFF +: PW];
+  assign i_rob         = issue_uop[`CPU_DISPATCH_ROB_IDX_OFF +: RW];
   assign i_alu_op      = issue_uop[`CPU_DISPATCH_ALU_OP_OFF +: 5];
   assign i_a_sel       = issue_uop[`CPU_DISPATCH_A_SEL_OFF +: 2];
   assign i_b_sel       = issue_uop[`CPU_DISPATCH_B_SEL_OFF];
@@ -238,22 +240,37 @@ module backend_ooo #(
   // ---------------------------------------------------------------------------
   logic        alu_valid_q;
   logic [PW-1:0] alu_tag_q;
+  logic [RW-1:0] alu_rob_q;
   logic [31:0] alu_value_q;
   logic        alu_exc_q;
 
   logic        div_valid_q;
   logic [PW-1:0] div_tag_q;
+  logic [RW-1:0] div_rob_q;
   logic [31:0] div_value_q;
   logic        div_exc_q;
+  logic [RW-1:0] div_pending_rob;
+  logic        div_discard;
 
   logic        br_valid_q;
   logic [31:0] br_pc_q, br_target_q;
   logic        br_taken_q, br_jalr_q;
   logic [PW-1:0] br_tag_q;
+  logic [RW-1:0] br_rob_q;
 
   logic        be_complete_valid_q;
   logic [PW-1:0] be_complete_tag_q;
   logic        be_complete_exc_q;
+  logic [RW-1:0] be_complete_rob_q;
+
+  function automatic logic is_younger(input logic [RW-1:0] entry_rob,
+                                      input logic [RW-1:0] squash_rob);
+    logic [RW-1:0] diff;
+    begin
+      diff = (entry_rob - squash_rob) & ((1 << RW) - 1);
+      is_younger = (diff != '0) && (diff < (`CPU_ROB_DEPTH/2));
+    end
+  endfunction
 
   // 需要 ALU 产生 CDB 值的 uop
   logic needs_alu_result;
@@ -417,13 +434,30 @@ module backend_ooo #(
       div_tag_pending <= '0;
       div_op_q <= '0;
       div_exc_pending <= 1'b0;
+      div_pending_rob <= '0;
+      div_discard <= 1'b0;
     end else begin
+      // squash 丢弃已发射的年轻结果，防止污染重新分配的 tag
+      if (sq_valid && alu_valid_q && is_younger(alu_rob_q, sq_rob))
+        alu_valid_q <= 1'b0;
+      if (sq_valid && div_valid_q && is_younger(div_rob_q, sq_rob))
+        div_valid_q <= 1'b0;
+      if (sq_valid && br_valid_q && is_younger(br_rob_q, sq_rob))
+        br_valid_q <= 1'b0;
+      if (sq_valid && be_complete_valid_q &&
+          is_younger(be_complete_rob_q, sq_rob))
+        be_complete_valid_q <= 1'b0;
+      if (sq_valid && div_busy &&
+          is_younger(div_pending_rob, sq_rob))
+        div_discard <= 1'b1;
+
       // ALU 结果
       if (alu_valid_q && cdb_src_ready[0])
         alu_valid_q <= 1'b0;
       if (alu_issue && needs_alu_result) begin
         alu_valid_q  <= 1'b1;
         alu_tag_q    <= i_dest;
+        alu_rob_q    <= i_rob;
         alu_value_q  <= wb_value;
         alu_exc_q    <= 1'b0;
       end
@@ -435,13 +469,19 @@ module backend_ooo #(
         div_tag_pending <= i_dest;
         div_op_q        <= i_alu_op;
         div_exc_pending <= i_illegal;
+        div_pending_rob <= i_rob;
+        div_discard     <= 1'b0;
       end
       if (div_done) begin
-        div_valid_q <= 1'b1;
-        div_tag_q   <= div_tag_pending;
-        div_value_q <= ((div_op_q == `ALU_DIV) || (div_op_q == `ALU_DIVU))
-                       ? div_quot : div_rem;
-        div_exc_q   <= div_exc_pending;
+        if (!div_discard) begin
+          div_valid_q <= 1'b1;
+          div_tag_q   <= div_tag_pending;
+          div_rob_q   <= div_pending_rob;
+          div_value_q <= ((div_op_q == `ALU_DIV) || (div_op_q == `ALU_DIVU))
+                         ? div_quot : div_rem;
+          div_exc_q   <= div_exc_pending;
+        end
+        div_discard <= 1'b0;
       end
 
       // 分支更新 / 无值完成
@@ -454,11 +494,13 @@ module backend_ooo #(
         br_target_q <= br_target;
         br_jalr_q   <= i_is_jalr;
         br_tag_q    <= i_dest;
+        br_rob_q    <= i_rob;
       end
       if (alu_issue && (i_illegal || (!i_reg_we && !i_is_mem))) begin
         be_complete_valid_q <= 1'b1;
         be_complete_tag_q   <= i_dest;
         be_complete_exc_q   <= i_illegal;
+        be_complete_rob_q   <= i_rob;
       end
     end
   end
